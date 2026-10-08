@@ -82,12 +82,25 @@ def load_video(key, url):
             raise ValueError('Live streams cannot be trimmed yet. Use a finished video.')
         job.update(stage='Preparing a seekable preview…', progress=70)
         preview = folder / 'preview.mp4'
-        # Normalise codec and put the MP4 index first for reliable browser seeking.
-        result = run([FFMPEG, '-hide_banner', '-loglevel', 'error', '-threads', '1', '-protocol_whitelist', 'file,pipe,crypto,data', '-i', str(source), '-threads', '1', '-filter_complex_threads', '1',
-                      '-map', '0:v:0', '-an', '-vf',
-                      "scale=w='min(1280,iw)':h='min(720,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1",
-                      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
-                      '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-y', str(preview)], 600)
+        # Repackage browser-compatible H.264 without encoding the whole video.
+        reader = imageio_ffmpeg.read_frames(str(source))
+        try:
+            source_metadata = next(reader)
+        finally:
+            reader.close()
+        base = [FFMPEG, '-hide_banner', '-loglevel', 'error', '-threads', '1',
+                '-protocol_whitelist', 'file,pipe,crypto,data', '-i', str(source),
+                '-map', '0:v:0', '-an']
+        if source_metadata.get('codec') == 'h264' and source_metadata.get('pix_fmt', '').startswith('yuv420p'):
+            result = run(base + ['-c:v', 'copy', '-movflags', '+faststart', '-y', str(preview)], 120)
+        else:
+            result = None
+        if result is None or result.returncode:
+            job.update(stage='Preparing this video format for your browser…', progress=70)
+            result = run(base + ['-threads', '1', '-filter_threads', '1', '-vf',
+                        "scale=w='min(854,iw)':h='min(480,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1",
+                        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '25',
+                        '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-y', str(preview)], 600)
         if result.returncode:
             raise ValueError('The downloaded video could not be prepared for preview.')
         reader = imageio_ffmpeg.read_frames(str(preview))
@@ -120,10 +133,10 @@ def convert_gif(key, options):
         job.update(stage='Making your GIF…', progress=40)
         source = SOURCES[options['source_id']]['path']
         duration = options['end'] - options['start']
-        filters = f"fps={options['fps']},scale={options['width']}:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a"
+        filters = f"trim=duration={duration},setpts=PTS-STARTPTS,fps={options['fps']},scale={options['width']}:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a"
         out = folder / 'clip.gif'
         result = run([FFMPEG, '-hide_banner', '-loglevel', 'error', '-ss', str(options['start']),
-                      '-threads', '1', '-protocol_whitelist', 'file,pipe,crypto,data', '-i', str(source), '-threads', '1', '-filter_complex_threads', '1', '-t', str(duration), '-filter_complex', filters,
+                      '-t', str(duration), '-threads', '1', '-protocol_whitelist', 'file,pipe,crypto,data', '-i', str(source), '-threads', '1', '-filter_complex_threads', '1', '-t', str(duration), '-filter_complex', filters,
                       '-loop', '0', '-y', str(out)], 240)
         if result.returncode or not out.exists() or out.stat().st_size < 50:
             raise ValueError('Could not convert that selection. Adjust the start and end, then try again.')
