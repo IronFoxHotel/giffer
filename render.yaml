@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: giffer
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: APP_SECRET
+        generateValue: true
