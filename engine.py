@@ -57,7 +57,7 @@ def friendly_error(stderr):
     if 'Requested format' in message:
         return 'The website did not offer a usable video stream. Try again or use a different public link.'
     if 'Sign in' in message or 'not a bot' in message:
-        return 'YouTube is asking for sign-in or verification for this video. Loop cannot download it anonymously right now.'
+        return 'YouTube is asking for sign-in or verification for this video. GIF me a break cannot download it anonymously right now.'
     return message.removeprefix('ERROR: ').strip()[:500]
 
 
@@ -221,11 +221,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 file = pathlib.Path(TEMP.name) / key / 'clip.gif'
                 if file.exists():
                     return self.serve_file(file, 'image/gif', head)
-        self.reply(404, {'error': 'Not found. Reload the video if Loop has restarted.'})
+        self.reply(404, {'error': 'Not found. Reload the video if GIF me a break has restarted.'})
 
     def do_POST(self):
         if not self.authorized() or self.headers.get('X-App-Token') != TOKEN:
-            return self.reply(403, {'error': 'Refresh Loop and try again.'})
+            return self.reply(403, {'error': 'Refresh GIF me a break and try again.'})
         if self.path not in ('/load', '/convert'):
             return self.reply(404, {'error': 'Not found'})
         try:
